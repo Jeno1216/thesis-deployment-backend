@@ -184,7 +184,7 @@ def generate_shortest_path_map(graph, start_node, end_node, start_lat, start_lon
     return m
 
 # Read data from CSV file
-crime_data = pd.read_csv('lapuz_data.csv')
+crime_data = pd.read_csv('final_dataset.csv')
 
 class PathRequest(BaseModel):
     start_lat: float
@@ -221,8 +221,8 @@ async def find_path(request_data: PathRequest):
     # Create KDTree
     kdtree = cKDTree(crime_coords)
 
-    place_name = "Lapuz, Western Visayas, Philippines"
-    graph_file = 'graph_lapuz.pickle'
+    place_name = "Iloilo City, Western Visayas, 5000, Philippines"
+    graph_file = 'graph.pickle'
 
     try:
         # Try to load the graph from a file using pickle.load
@@ -243,9 +243,9 @@ async def find_path(request_data: PathRequest):
 
             # Assign weights to the edges
             if 'crime_weight' not in graph[nearest_edge[0]][nearest_edge[1]][0]:
-                graph[nearest_edge[0]][nearest_edge[1]][0]['crime_weight'] = row['OFFENSE THRESHOLD']
+                graph[nearest_edge[0]][nearest_edge[1]][0]['crime_weight'] = row['WEIGHTS']
             else:
-                graph[nearest_edge[0]][nearest_edge[1]][0]['crime_weight'] += row['OFFENSE THRESHOLD']
+                graph[nearest_edge[0]][nearest_edge[1]][0]['crime_weight'] += row['WEIGHTS']
 
         # Save the graph with assigned weights to a file using pickle.dump for faster loading next time
         with open(graph_file, 'wb') as f:
