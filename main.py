@@ -360,7 +360,7 @@ async def create_heatmap(data: HeatmapInput):
         kde.fit(lat_lon)
 
         # Create a heatmap using Folium
-        m = folium.Map(location=[filtered_data['LATITUDE'].mean(), filtered_data['LONGITUDE'].mean()], zoom_start=12)
+        m = folium.Map(location=[filtered_data['LATITUDE'].mean(), filtered_data['LONGITUDE'].mean()], zoom_start=12, zoom_control=False)
 
         heat_data = [[row['LATITUDE'], row['LONGITUDE']] for index, row in filtered_data.iterrows()]
         heat_map = HeatMap(heat_data, gradient={0.2: 'blue', 0.4: 'green', 0.6: 'yellow',
