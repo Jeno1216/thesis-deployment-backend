@@ -17,6 +17,8 @@ import numpy as np
 from ipywidgets import interact, widgets
 from IPython.display import display
 from joblib import dump, load
+from typing import List
+
 
 # Configure CORS to allow requests from your React frontend's domain
 middleware = [
@@ -328,11 +330,11 @@ column_name = "YEAR"
 df[column_name] = df[column_name].astype(str)
 
 class HeatmapInput(BaseModel):
-    day: str = ''
-    month: str = ''
-    year: str = ''
-    district: str = ''
-    category: str = ''
+    day: List[str] = []
+    month: List[str] = []
+    year: List[str] = []
+    district: List[str] = []
+    category: List[str] = []
 
 @app.post("/heatmap")
 async def create_heatmap(data: HeatmapInput):
@@ -340,16 +342,16 @@ async def create_heatmap(data: HeatmapInput):
     filtered_data = df.copy()
 
     # Apply filters based on user input
-    if data.day != "":
-        filtered_data = filtered_data[filtered_data['DAY ON THE WEEK'] == data.day]
-    if data.month != "":
-        filtered_data = filtered_data[filtered_data['MONTH'] == data.month]
-    if data.year != "":
-        filtered_data = filtered_data[filtered_data['YEAR'] == data.year]
-    if data.district != "":
-        filtered_data = filtered_data[filtered_data['DISTRICT'] == data.district]
-    if data.category != "":
-        filtered_data = filtered_data[filtered_data['CATEGORY'] == data.category]
+    if data.day:
+        filtered_data = filtered_data[filtered_data['DAY ON THE WEEK'].isin(data.day)]
+    if data.month:
+        filtered_data = filtered_data[filtered_data['MONTH'].isin(data.month)]
+    if data.year:
+        filtered_data = filtered_data[filtered_data['YEAR'].isin(data.year)]
+    if data.district:
+        filtered_data = filtered_data[filtered_data['DISTRICT'].isin(data.district)]
+    if data.category:
+        filtered_data = filtered_data[filtered_data['CATEGORY'].isin(data.category)]
 
     if filtered_data.empty:
         raise HTTPException(status_code=404, detail="No data found for the specified month, year, district, and category.")
