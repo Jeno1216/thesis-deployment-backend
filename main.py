@@ -355,7 +355,6 @@ async def create_heatmap(data: HeatmapInput):
     if data.category:
         filtered_data = filtered_data[filtered_data['CATEGORY'].isin(data.category)]
 
-
     num_rows = filtered_data.shape[0]
 
     # Display the number of rows
@@ -375,7 +374,7 @@ async def create_heatmap(data: HeatmapInput):
     iloilo_kde = folium.Map(location=map_center, zoom_start=12)
 
     # Iterate over different crime types with weights
-    for weight in range(1, 16):
+    for weight in range(1, 17):
         crime_data = filtered_data[filtered_data['WEIGHTS'] == weight][['LATITUDE', 'LONGITUDE']]
 
         # Check if crime_data is not empty before fitting KernelDensity
