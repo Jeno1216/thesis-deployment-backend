@@ -323,11 +323,6 @@ async def add_cors_header(request, call_next):
     response.headers["Access-Control-Allow-Methods"] = "*"
     return response
 
-# Read the dataset and assign it to the variable 'df'
-df = pd.read_csv("edited_dataset.csv")
-# Set a specific column to string data type
-column_name = "YEAR"
-df[column_name] = df[column_name].astype(str)
 
 class HeatmapInput(BaseModel):
     day: List[str] = []
@@ -338,12 +333,19 @@ class HeatmapInput(BaseModel):
 
 @app.post("/heatmap")
 async def create_heatmap(data: HeatmapInput):
+    # Read the dataset and assign it to the variable 'df'
+    df = pd.read_csv("2023_final_dataset.csv")
+
+    # We need to convert the int YEAR to a string
+    column_name = "YEAR"
+    df[column_name] = df[column_name].astype(str)
+
     # Create a copy of the dataframe
     filtered_data = df.copy()
 
     # Apply filters based on user input
     if data.day:
-        filtered_data = filtered_data[filtered_data['DAY ON THE WEEK'].isin(data.day)]
+        filtered_data = filtered_data[filtered_data['DAY'].isin(data.day)]
     if data.month:
         filtered_data = filtered_data[filtered_data['MONTH'].isin(data.month)]
     if data.year:
@@ -353,27 +355,61 @@ async def create_heatmap(data: HeatmapInput):
     if data.category:
         filtered_data = filtered_data[filtered_data['CATEGORY'].isin(data.category)]
 
-    if filtered_data.empty:
-        raise HTTPException(status_code=404, detail="No data found for the specified month, year, district, and category.")
-    else:
-        # Compute the Kernel Density Estimation
-        lat_lon = np.array(filtered_data[['LATITUDE', 'LONGITUDE']])
-        kde = KernelDensity(bandwidth=0.01, kernel='gaussian')
-        kde.fit(lat_lon)
 
-        # Create a heatmap using Folium
-        m = folium.Map(location=[filtered_data['LATITUDE'].mean(), filtered_data['LONGITUDE'].mean()], zoom_start=14, zoom_control=False)
+    num_rows = filtered_data.shape[0]
 
-        heat_data = [[row['LATITUDE'], row['LONGITUDE']] for index, row in filtered_data.iterrows()]
-        heat_map = HeatMap(heat_data, gradient={0.2: 'blue', 0.4: 'green', 0.6: 'yellow',
-                                                0.8: 'orange', 1.0: 'red'}, radius=15)
-        heat_map.add_to(m)
+    # Display the number of rows
+    print("Number of rows in the dataset:", num_rows)
 
-        # Convert the map to HTML
-        html = m._repr_html_().replace('<div', '<div style="height: 100vh;"')
+    # Add the following line to specify bandwidth
+    bandwidth = 0.01
 
-        # Return the HTML as a response
-    return {"html": html}
+    # Create a KDE model
+    lat_lon = np.array(filtered_data[['LATITUDE', 'LONGITUDE']])
+
+    # Create a Folium map centered on Iloilo City
+    # Coordinates of the center of Iloilo City
+    map_center = [10.720321, 122.562019]
+
+    # Create a Folium map centered on Iloilo City
+    iloilo_kde = folium.Map(location=map_center, zoom_start=12)
+
+    # Iterate over different crime types with weights
+    for weight in range(1, 16):
+        crime_data = filtered_data[filtered_data['WEIGHTS'] == weight][['LATITUDE', 'LONGITUDE']]
+
+        # Check if crime_data is not empty before fitting KernelDensity
+        if not crime_data.empty:
+            crime_kde = KernelDensity(bandwidth=bandwidth, kernel='gaussian').fit(crime_data)
+
+            # Evaluate the KDE for the crime type heatmap
+            crime_positions = np.vstack([crime_data['LATITUDE'], crime_data['LONGITUDE']]).T
+            crime_z = np.exp(crime_kde.score_samples(crime_positions))
+
+            # Define the gradient for the heatmap
+            gradient = {
+                0.2: 'blue',
+                0.4: 'green',
+                0.6: 'yellow',
+                0.8: 'orange',
+                1.0: 'red'
+            }
+
+            # Add the crime heatmap to the map
+            HeatMap(list(zip(crime_data['LATITUDE'], crime_data['LONGITUDE'], crime_z)),
+                    min_opacity=0.2,
+                    max_val=np.max(crime_z),
+                    radius=15,
+                    blur=10,
+                    max_zoom=1,
+                    overlay=True,
+                    control=False,
+                    gradient=gradient).add_to(iloilo_kde)
+    
+    iloilo_kde.save('crime_heatmap.html')
+
+    # Return the map
+    return {"html": iloilo_kde._repr_html_()}
 
 
 @app.get("/")
