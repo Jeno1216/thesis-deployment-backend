@@ -1,7 +1,7 @@
 {
     "_meta": {
         "hash": {
-            "sha256": "3a917870962ba206c465b9954434c73a924869ccce67757645803104dd20971b"
+            "sha256": "0adc7784f5b14424e3dd771f00779cd3d4eaf4d720de09e59e58fc291bd15fcc"
         },
         "pipfile-spec": 6,
         "requires": {
@@ -25,6 +25,9 @@
             "version": "==0.6.0"
         },
         "anyio": {
+            "extras": [
+                "trio"
+            ],
             "hashes": [
                 "sha256:44a3c9aba0f5defa43261a8b3efb97891f2bd7d804e0e1f56419befa1adfc780",
                 "sha256:91dee416e570e92c64041bd18b900d1d6fa78dff7048769ce5ac5ddad004fbb5"
@@ -1495,10 +1498,10 @@
         },
         "wcwidth": {
             "hashes": [
-                "sha256:f01c104efdf57971bcb756f054dd58ddec5204dd15fa31d6503ea57947d97c02",
-                "sha256:f26ec43d96c8cbfed76a5075dac87680124fa84e0855195a6184da9c187f133c"
+                "sha256:3da69048e4540d84af32131829ff948f1e022c1c6bdb8d6102117aac784f6859",
+                "sha256:72ea0c06399eb286d978fdedb6923a9eb47e1c486ce63e9b4e64fc18303972b5"
             ],
-            "version": "==0.2.12"
+            "version": "==0.2.13"
         },
         "werkzeug": {
             "hashes": [
