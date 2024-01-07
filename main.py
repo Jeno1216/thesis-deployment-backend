@@ -1,4 +1,4 @@
-from fastapi import FastAPI, Form, HTTPException, Body
+from fastapi import FastAPI, Form, HTTPException, Body, Depends, Request
 from fastapi.responses import HTMLResponse, JSONResponse
 from pydantic import BaseModel
 import folium
@@ -18,20 +18,20 @@ from ipywidgets import interact, widgets
 from IPython.display import display
 from joblib import dump, load
 from typing import List
+import psycopg2
+from fastapi.security import HTTPBasic, HTTPBasicCredentials
+from starlette.status import HTTP_401_UNAUTHORIZED
 
 
-# Configure CORS to allow requests from your React frontend's domain
-middleware = [
-    Middleware(
-        CORSMiddleware,
-        allow_origins=["*"],  # Replace with your React frontend's domain
-        allow_credentials=True,
-        allow_methods=["*"],
-        allow_headers=["*"],
-    )
-]
+app = FastAPI()
 
-app = FastAPI(middleware=middleware)
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
 
 # Define a function to find the safest path between two nodes
@@ -185,9 +185,6 @@ def generate_shortest_path_map(graph, start_node, end_node, start_lat, start_lon
 
     return m
 
-# Read data from CSV file
-crime_data = pd.read_csv('final_dataset.csv')
-
 class PathRequest(BaseModel):
     start_lat: float
     start_lon: float
@@ -217,6 +214,9 @@ async def find_path(request_data: PathRequest):
     #kdtree = cKDTree(crime_coords)
 
     #USING CSV
+    # Read data from CSV file
+    crime_data = pd.read_csv('final_dataset.csv')
+
     # Get coordinates
     crime_coords = crime_data[['LATITUDE', 'LONGITUDE']].values
 
@@ -371,7 +371,7 @@ async def create_heatmap(data: HeatmapInput):
     map_center = [10.720321, 122.562019]
 
     # Create a Folium map centered on Iloilo City
-    iloilo_kde = folium.Map(location=map_center, zoom_start=12)
+    iloilo_kde = folium.Map(location=map_center, zoom_start=12, zoom_control=False)
 
     # Iterate over different crime types with weights
     for weight in range(1, 17):
@@ -406,14 +406,231 @@ async def create_heatmap(data: HeatmapInput):
                     gradient=gradient).add_to(iloilo_kde)
     
     iloilo_kde.save('crime_heatmap.html')
-
+    
     # Return the map
-    return {"html": iloilo_kde._repr_html_()}
+    return {"html": iloilo_kde._repr_html_().replace('<div', '<div style="height: 100vh;"')}
 
+#DATABASE
+def create_conn():
+    conn = psycopg2.connect(
+        host='localhost',
+        port=5432,
+        user='postgres',
+        password='jnblld1216',
+        dbname='crime_data'
+    )
+    return conn
+
+@app.get("/data")
+def get_data(page: int = 0, page_size: int = 100):
+    conn = create_conn()
+    cur = conn.cursor()
+    cur.execute("SELECT * FROM crime_data OFFSET %s LIMIT %s", (page * page_size, page_size))
+    rows = cur.fetchall()
+    return {"data": rows}
+
+@app.get("/alphabetical")
+def get_alphabetical(page: int = 0, page_size: int = 100):
+    conn = create_conn()
+    cur = conn.cursor()
+    cur.execute("SELECT * FROM crime_data ORDER BY district ASC OFFSET %s LIMIT %s", (page * page_size, page_size))
+    rows = cur.fetchall()
+    return {"alphabetical": rows}
+
+
+from fastapi import FastAPI, HTTPException, Request, Depends
+from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm
+from jose import jwt
+import psycopg2
+
+oauth2_scheme = OAuth2PasswordBearer(tokenUrl="token")
+
+@app.post('/login')
+async def login(form_data: OAuth2PasswordRequestForm = Depends()):
+    username = form_data.username
+    password = form_data.password
+
+    conn = psycopg2.connect(database="crime_data", user="postgres", password="jnblld1216", host="localhost", port="5432")
+    cur = conn.cursor()
+
+    # Use a parameterized query to prevent SQL injection
+    cur.execute("SELECT * FROM admin WHERE username=%s", (username,))
+    user = cur.fetchone()
+
+    conn.close()
+
+    if not user or not password == user[4]: # 4 is the position of the column password in the table
+        return {"detail": "Invalid username or password"}
+
+    print(user)
+    # Create a JWT token
+    token_data = {"officer_id": user[0], "officer_name": user[1],  "officer_position": user[2],  "username": user[3]}  # numbers is index position of the data in the data base column
+    token = jwt.encode(token_data, "secret-key", algorithm="HS256")
+
+    return {"access_token": token, "token_type": "bearer"}
+
+async def get_current_user(token: str = Depends(oauth2_scheme)):
+    credentials_exception = HTTPException(
+        status_code=HTTP_401_UNAUTHORIZED,
+        detail="Could not validate credentials",
+        headers={"WWW-Authenticate": "Bearer"},
+    )
+    try:
+        payload = jwt.decode(token, "secret-key", algorithms=["HS256"])
+        username: str = payload.get("sub")
+        if username is None:
+            raise credentials_exception
+    except JWTError:
+        raise credentials_exception
+    return username
+
+class User(BaseModel):
+    officer_id: int
+    officer_name: str
+    officer_position: str
+    username: str
+    password: str
+
+@app.post("/register")
+async def register(user: User):
+    print(user.officer_id)
+    conn = psycopg2.connect(database="crime_data", user="postgres", password="jnblld1216", host="localhost", port="5432")
+    cur = conn.cursor()
+
+    # Check if a user with the given officername already exists
+    cur.execute("SELECT * FROM admin WHERE officer_name=%s", (user.officer_name,))
+    existing_user = cur.fetchone()
+
+    if existing_user is not None:
+        # If a user with the given username already exists, return an error message
+        return {"result": "User Exists."}
+
+    else:
+        # If no existing user is found, insert the new user into the database
+        cur.execute("INSERT INTO admin (officer_id, officer_name, officer_position, username, password) VALUES (%s, %s, %s, %s, %s)", (user.officer_id, user.officer_name, user.officer_position, user.username, user.password))
+        conn.commit()
+
+        cur.close()
+        conn.close()
+
+        return {"result": "User Registered."}
+
+@app.get("/users/me")
+async def read_users_me(username: str = Depends(get_current_user)):
+    print(username)
+    return {"username": username}
 
 @app.get("/")
-def read_root():
-    return {"message": "Hello from FastAPI!"}
+async def read_root(token: str = Depends(oauth2_scheme)):
+    if not token:
+        raise HTTPException(status_code=403, detail="Unauthorized")
+    return {"message": "You are authorized"}
+
+class CrimeData(BaseModel):
+    district: str
+    barangay: str
+    dateReported: str
+    timeReported: str
+    dateCommitted: str
+    timeCommitted: str
+    offense: str
+    category: str
+    latitude: str
+    longitude: str
+    weight: str
+    year: str
+    month: str
+    time: str
+    lightCondition: str
+    day: str
+    officer: str
+
+@app.post("/add")
+async def add(data: CrimeData):
+    print(data.officer)
+    conn = psycopg2.connect(database="crime_data", user="postgres", password="jnblld1216", host="localhost", port="5432")
+    cur = conn.cursor()
+
+    cur.execute("INSERT INTO crime_data (district, barangay, date_reported, time_reported, date_committed, time_committed, offenses, category, latitude, longitude, weights, year, month, time, light_condition, day, date_added, officer) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, NOW(), %s)", 
+    (data.district, data.barangay, data.dateReported, data.timeReported, data.dateCommitted, data.timeCommitted, data.offense, data.category, data.latitude, data.longitude, data.weight, data.year, data.month, data.time, data.lightCondition, data.day, data.officer))
+    conn.commit()
+
+    cur.close()
+    conn.close()
+
+    return {"result": "Crime Data Added."}
+
+
+class CrimeDataDelete(BaseModel):
+    crimeID: int
+
+@app.post("/delete")
+async def delete(data: CrimeDataDelete):
+    print(data.crimeID)
+    conn = psycopg2.connect(database="crime_data", user="postgres", password="jnblld1216", host="localhost", port="5432")
+    cur = conn.cursor()
+
+    # Check if the crime data exists
+    cur.execute(f"SELECT * FROM crime_data WHERE crime_id={data.crimeID}")
+    result = cur.fetchone()
+    if result is None:
+        return {"result": f"Crime data with the specified ID does not exist."}
+
+    # If it exists, delete it
+    cur.execute(f"DELETE FROM crime_data WHERE crime_id={data.crimeID}")
+    conn.commit()
+
+    cur.close()
+    conn.close()
+
+    return {"result": "Crime Data Deleted."}
+
+class CrimeDataEdit(BaseModel):
+    crimeID: int
+    district: str
+    barangay: str
+    dateReported: str
+    timeReported: str
+    dateCommitted: str
+    timeCommitted: str
+    offense: str
+    category: str
+    latitude: str
+    longitude: str
+    weight: str
+    year: str
+    month: str
+    time: str
+    lightCondition: str
+    day: str
+    officer: str
+
+@app.post("/edit")
+async def edit(data: CrimeDataEdit):
+    print(data.crimeID)
+    conn = psycopg2.connect(database="crime_data", user="postgres", password="jnblld1216", host="localhost", port="5432")
+    cur = conn.cursor()
+
+    # Check if the crime data exists
+    cur.execute(f"SELECT * FROM crime_data WHERE crime_id={data.crimeID}")
+    result = cur.fetchone()
+
+    if result is None:
+        return {"result": f"Crime data with the specified ID does not exist."}
+
+    # If it exists, edit it
+    cur.execute(f"UPDATE crime_data SET district = '{data.district}', barangay = '{data.barangay}', date_reported = '{data.dateReported}', \
+        time_reported = '{data.timeReported}', date_committed = '{data.dateCommitted}', time_committed = '{data.timeCommitted}', \
+        offenses = '{data.offense}', category = '{data.category}', latitude = '{data.latitude}', longitude = '{data.longitude}', \
+        weights = '{data.weight}', year = '{data.year}', month = '{data.month}', time = '{data.time}', light_condition = '{data.lightCondition}', \
+        day = '{data.day}', officer = '{data.officer}' WHERE crime_id={data.crimeID}")
+    conn.commit()
+
+    cur.close()
+    conn.close()
+
+    return {"result": "Crime Data Updated."}
+
 
 if __name__ == '__main__':
     import uvicorn
