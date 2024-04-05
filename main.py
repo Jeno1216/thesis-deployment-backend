@@ -198,27 +198,13 @@ async def find_path(request_data: PathRequest):
     end_lat = request_data.end_lat
     end_lon = request_data.end_lon
     
-    #USING DATABASE
-
-    #db_connection = mysql.connector.connect(
-    #    host='localhost',
-    #    user='root',
-    #    password='',
-    #    database='crime_data'
-    #)
-    
-    #crime_query = "SELECT * FROM mytable;"
-    #crime_data = pd.read_sql_query(crime_query, db_connection)
-
-    #crime_coords = crime_data[['LATITUDE', 'LONGITUDE']].values
-    #kdtree = cKDTree(crime_coords)
-
-    #USING CSV
-    # Read data from CSV file
-    crime_data = pd.read_csv('final_dataset.csv')
+    # Use pandas to execute SQL query and store result in DataFrame
+    conn = create_conn()
+    query = "SELECT * FROM crime_data;"  # replace with your actual SQL query
+    crime_data = pd.read_sql_query(query, conn)
 
     # Get coordinates
-    crime_coords = crime_data[['LATITUDE', 'LONGITUDE']].values
+    crime_coords = crime_data[['latitude', 'longitude']].values
 
     # Create KDTree
     kdtree = cKDTree(crime_coords)
@@ -413,11 +399,11 @@ async def create_heatmap(data: HeatmapInput):
 #DATABASE
 def create_conn():
     conn = psycopg2.connect(
-        host='localhost',
-        port=5432,
-        user='postgres',
-        password='jnblld1216',
-        dbname='crime_data'
+        host='ep-noisy-glitter-a1knt3hq.ap-southeast-1.aws.neon.tech',  
+        port=5432, 
+        user='safetypin_owner',  
+        password='cti63KwTmHOd',  
+        dbname='safetypin' 
     )
     return conn
 
@@ -433,7 +419,7 @@ def get_data(page: int = 0, page_size: int = 100):
 def get_alphabetical(page: int = 0, page_size: int = 100):
     conn = create_conn()
     cur = conn.cursor()
-    cur.execute("SELECT * FROM crime_data ORDER BY district ASC OFFSET %s LIMIT %s", (page * page_size, page_size))
+    cur.execute("SELECT * FROM crime_data ORDER BY barangay ASC OFFSET %s LIMIT %s", (page * page_size, page_size))
     rows = cur.fetchall()
     return {"alphabetical": rows}
 
@@ -450,7 +436,7 @@ async def login(form_data: OAuth2PasswordRequestForm = Depends()):
     username = form_data.username
     password = form_data.password
 
-    conn = psycopg2.connect(database="crime_data", user="postgres", password="jnblld1216", host="localhost", port="5432")
+    conn = create_conn()
     cur = conn.cursor()
 
     # Use a parameterized query to prevent SQL injection
@@ -494,7 +480,7 @@ class User(BaseModel):
 @app.post("/register")
 async def register(user: User):
     print(user.officer_id)
-    conn = psycopg2.connect(database="crime_data", user="postgres", password="jnblld1216", host="localhost", port="5432")
+    conn = create_conn()
     cur = conn.cursor()
 
     # Check if a user with the given officername already exists
@@ -548,7 +534,7 @@ class CrimeData(BaseModel):
 @app.post("/add")
 async def add(data: CrimeData):
     print(data.officer)
-    conn = psycopg2.connect(database="crime_data", user="postgres", password="jnblld1216", host="localhost", port="5432")
+    conn = create_conn()
     cur = conn.cursor()
 
     cur.execute("INSERT INTO crime_data (district, barangay, date_reported, time_reported, date_committed, time_committed, offenses, category, latitude, longitude, weights, year, month, time, light_condition, day, date_added, officer) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, NOW(), %s)", 
@@ -567,7 +553,7 @@ class CrimeDataDelete(BaseModel):
 @app.post("/delete")
 async def delete(data: CrimeDataDelete):
     print(data.crimeID)
-    conn = psycopg2.connect(database="crime_data", user="postgres", password="jnblld1216", host="localhost", port="5432")
+    conn = create_conn()
     cur = conn.cursor()
 
     # Check if the crime data exists
@@ -608,7 +594,7 @@ class CrimeDataEdit(BaseModel):
 @app.post("/edit")
 async def edit(data: CrimeDataEdit):
     print(data.crimeID)
-    conn = psycopg2.connect(database="crime_data", user="postgres", password="jnblld1216", host="localhost", port="5432")
+    conn = create_conn()
     cur = conn.cursor()
 
     # Check if the crime data exists
